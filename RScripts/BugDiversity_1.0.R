@@ -223,5 +223,16 @@ BugDiv_Indices <- BugDiv_Abundance %>%
   left_join(BugDiv_Rich, by = "SiteRep") 
   
 
+#jaccard similarity indices----
+#Netting
+jaccard_FnGO_N <- BugDiv_Abundance %>% filter(Method == "Netting") %>% 
+ {as.matrix(vegan::vegdist(.[7:32], method = "jaccard"))}
 
- 
+#rename columns and rows
+rownames(jaccard_FnGO_N) <- filter(BugDiv_Abundance, Method == "Netting")$SiteRep
+colnames(jaccard_FnGO_N) <- filter(BugDiv_Abundance, Method == "Netting")$SiteRep
+
+#PCA
+hailmary <- prcomp(jaccard_FnGO_N, scale. = T)
+corrplot::corrplot(hailmary$rotation)
+heatmap(jaccard_FnGO_N, Rowv = NA, Colv = NA)
