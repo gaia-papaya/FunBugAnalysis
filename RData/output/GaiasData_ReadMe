@@ -1,0 +1,43 @@
+Hey :3 
+
+File 1: Gaias_FunctionalGroup_Data.csv
+  "UID": Unique IDentifier string.(concatenation of site and Rep Strings)             
+  "Method" Method of insect collection 
+  "FunctionalGroup" Arthropod Functional group 
+  "FnGroupCount" Counts of Functional Groups
+  #NOTE: ALL DIVERSITY INDICES ARE GROUPED BY UID AND METHOD 
+  "FnRichness" Richness of Functional groups
+  "FnShannon" Shannon-Weiner Diversity Score
+  "FnSimpson" Simpson Diversity Score
+  "FnInvSimp" Inverse Simpson Diversity Score
+  "FnEvenness" Shannon Weiner evenness Score
+  #NOTE: ALL AIR QUALITY PARAMETERS ARE GROUPED BY UID
+  "AVG_PM2.5" concentration of PM2.5 (ppm)
+  "AVG_PM10"  concentration of PM10 (ppm)      
+  "AVG_CO2"   concentration of CO2 (ppm)      
+  "AVG_TEMP"  Temperature in Celsius
+  "AVG_HUMID" % humidity
+  
+File 2: Gaias_Vegetation_data.csv
+  "UID" Unique IDentifier string.(concatenation of site and Rep Strings)                  
+  "Site" identified string for site. subjective class is given by first letter( R = Rural, U = Urban, S = Suburban'). 2nd letter is unique to a given site (A,B,C...)              
+  "Replicate" replicate number of a site
+  "Date">~< u can read, right?
+  "Time_Start" Time sampling starts (EST)
+  "Time_End"   Time sampling ends (EST)
+  "LatitudeDec" Latitude in Decimal format        
+  "LongitudeDec" Longitude in Decimal format
+  "CanopyCoverPer" Percent Canopy Cover, derived from images taken at each site 
+  #NOTE: PLNT REFERS TO GROUND COVER PLANTS, TREE TO TREES, AND VEG IS CUMMULATIVE (BOTH)
+  "PlantRichness"            "TreeRichness"          "VegRichness"        
+[13] "PlantShannon"          "TreeShannon"           "VegShannon"            "PlantSimpson"         
+[17] "TreeSimpson"           "VegSimpson"            "PlantInvSimp"          "TreeInvSimp"          
+[21] "VegInvSimp"            "PlantEvenness"         "TreeEvenness"          "VegEvenness"          
+[25] "Species" scientific name of species/genus. 
+"TotalCounts"           "PlantCounts"           "TreeCounts" counts for each type of species
+[29] "ThresholdValue_Bottom" "ThresholdValue_Top" threshhold values for the canopy cover images
+"N_Trees" number of trees in the site
+"SampleTime_min" total sampling time, in minutes
+[33] "PropTrees_Sampled"    
+
+HAPPY CODING >:)

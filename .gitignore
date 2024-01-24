@@ -1,0 +1,9 @@
+#Ignore the following files
+.Rhistory
+*.qgz
+Documents/
+Rplots/
+QLayers/
+QOutput/
+RData/input/
+.Rproj.user

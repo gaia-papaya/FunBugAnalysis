@@ -1,0 +1,681 @@
+
+
+```{r function code}
+#dependencies
+library(ggpubr)
+#Helper Functions:
+#FUNCTION CODE
+#ARGS:
+  #dt: dataframe/table which to use
+  #depth: taxonomic rank which to stop percent calculations at, as a  character string (eg order, family, genus, etc.). 
+  #filter_rank: if the query should be filtered for a specific taxonomic ranking (e.g. "order", "family:, etc.). defaults to NA, where no filter will be applied
+  #filter_name: if filter rank is given, what is the name of the rank to filter by? (e.g. only look at obs which are hymenoptera = filter_rank "order", filter_name = "Hymenoptera")
+#OUTPUT:
+#function outputs a list of each taxon rank to the given depth, with each element being a rank. each element holds a vector of length 3, contaning character outputs
+Percent_At_Taxon <- function(dt, depth = NA, filter_rank = NA, filter_name = NA){
+  #coerce dt to data.table
+  dt <- data.table::as.data.table(dt)
+  #vector of taxonomic groups from available columns
+  taxon_groups <- str_subset(colnames(dt), "(?<=taxon_)[:lower:]+(?=_name)")
+  #remove NAs
+  taxon_groups <- taxon_groups[!is.na(taxon_groups)]
+  #clip taxon groups based on depth
+  taxon_groups<- taxon_groups[1:ifelse(is.na(depth) == T, -1,str_which(taxon_groups,paste("_", depth, "_", sep = "")))]
+  
+  #is the query filtered?
+  if(is.na(filter_rank) == TRUE){
+    #calculate total number of observations from total number of rows
+    TotalObs <- nrow(dt)
+    #loop through taxon groups to calculate percent for each
+    unfiltered_percent_list <- list()
+    for(t in 1:length(taxon_groups)){
+      #current rank query string
+      current_query_string <- taxon_groups[t]
+      #calculate total number of observations of given taxon group t
+      TotalQueriedObs <-nrow(dt[dt[[current_query_string]] != ""])
+      #calculate percent of observations at given rank
+      PercentAtRank <- TotalQueriedObs/TotalObs*100
+      #output results to list as vector
+      unfiltered_percent_list[[t]] <- c(paste("Total Observations at given rank:", TotalQueriedObs),
+                                        paste("Percent of Observations at given rank:", round(PercentAtRank, 2), "%"),
+                                        paste("Total Observations in dataframe:", TotalObs))
+    }
+    #rename list elements
+    names(unfiltered_percent_list) <- str_extract(taxon_groups, "(?<=taxon_)[:lower:]+(?=_name)")
+    return(unfiltered_percent_list)
+    
+  } else { #if filtering is not NA 
+    #remove superfluous taxon names according to given rank
+    taxon_groups <- taxon_groups[str_which(taxon_groups, paste("_", filter_rank, "_", sep = "")):length(taxon_groups)]
+    #query string for filtering
+    filter_query_string <- paste("taxon",filter_rank,"name", sep = "_")
+    #calculate total number of observations in the filtered set
+    TotalObs <- nrow(dt[dt[[filter_query_string]] == filter_name])
+    #loop through taxon groups to calculate percent for each
+    filtered_percent_list <- list()
+    for(t in 1:length(taxon_groups)){
+      #current rank query string
+      current_query_string <- taxon_groups[t]
+      #calculate total number of observations of queried rank by filter
+      TotalQueriedObs <- nrow(dt[dt[[current_query_string]] != "" & dt[[filter_query_string]] == filter_name])
+      #calculate percent of observations at given rank
+      PercentAtRank <- TotalQueriedObs/TotalObs*100
+      #output results to list as vector
+      filtered_percent_list[[t]] <- c(paste("Total Observations at given rank:", TotalQueriedObs),
+                                    paste("Percent of Observations at given rank:", round(PercentAtRank, 2), "%"),
+                                    paste("Total Observations in dataframe:", TotalObs))
+    }
+    #rename list elements
+    names(filtered_percent_list) <- str_extract(taxon_groups, "(?<=taxon_)[:lower:]+(?=_name)")
+    return(filtered_percent_list)
+  }
+ 
+}
+
+#theme function code
+theme_gaia = function(base_size =12){
+  theme_pubr(base_family="sans") %+replace%
+    theme(panel.background  = element_blank(),
+      plot.background = element_rect(fill="transparent", colour=NA), 
+      legend.background = element_rect(fill="transparent", colour=NA),
+      legend.key = element_rect(fill="transparent", colour=NA),
+      legend.text = element_text(size=base_size * 0.7),
+      legend.title = element_text(size = base_size * 0.8, 
+                                  face = "bold"),
+      axis.text = element_text(size = base_size*0.85),
+      axis.title = element_text(size = base_size * 1.2),
+      plot.title.position = "panel",
+      plot.caption.position = "panel",
+      plot.title = element_text(
+        size = base_size * 1.25,
+        face = "bold", 
+        hjust = 0.5,
+        vjust = 1),
+      plot.subtitle = element_text(
+        size = base_size * 0.9,
+        vjust = 1),
+      plot.caption =  element_text(
+        size = base_size*0.75,
+        hjust = 0.5)
+    )
+  
+}
+```
+
+```{r analysis control panel 0.1}
+#dependencies----
+require(viridisLite)
+#executing main analyses----
+source("RScripts/PlantDiversity.R")
+source("RScripts/CanopyCover.R")
+source("RScripts/AirQuality.R")
+source("RScripts/BugDiversity_0.1.R") 
+source("RScripts/GIS.R")
+
+#Merge data for stats
+#Diversity Scores
+Full_DivScore_Data <- FNW_Div  %>% 
+  left_join(., select(Veg_Data_wide,SiteRep,
+                      starts_with("Plant"), 
+                      starts_with("Tree"),
+                      starts_with("Veg")), by ="SiteRep") %>% 
+  arrange(SiteRep)
+
+#environmental data
+FullEnviron_Data <- Veg_Data_wide %>% 
+  select(SiteRep, Date, Sample_Time, PropTrees_Sampled, CanopyCoverPer) %>% 
+  left_join(., select(GIS_Data, !geometry), by = "SiteRep") %>% 
+  left_join(., AQ_Summary, by = "SiteRep") %>% 
+  arrange(SiteRep)
+
+#calculate PCAs of variables----
+#anthropogenic factor
+AnthroLandscape_PCA <-prcomp(select(FullEnviron_Data, contains("1km"), contains("Annum")), scale. = T)
+#correl plot 
+corrplot::corrplot(AnthroLandscape_PCA$rotation,col = colorRampPalette(viridis(50))(50),#number of breaks in brackets
+                   addCoef.col = "black", tl.col = "black")
+#correl between vars
+cor_environLandscape <- cor(select(FullEnviron_Data,  contains("1km"), contains("Annum")))
+corrplot::corrplot(cor_environLandscape)
+#scree plot
+factoextra::fviz_eig(AnthroLandscape_PCA)
+
+
+#fn abundances
+FN_Data_wide1<-FN_Data_wide %>% 
+  group_by(SiteRep) %>% 
+  summarise(across("Fungivore":"Detritivore", sum))
+
+Bug_PCA <-prcomp(select(FN_Data_wide1,"Fungivore":"Detritivore"), scale. = T)
+Bug_NMDS <- vegan::metaMDS(select(FN_Data_wide1,"Fungivore":"Detritivore"), k = 4, plot = T)
+#correl plot
+corrplot::corrplot(Bug_PCA$rotation,col = colorRampPalette(viridis(50))(50),#number of breaks in brackets
+               tl.col = "black")
+corrplot::corrplot(Bug_NMDS$species,col = colorRampPalette(viridis(50))(50),#number of breaks in brackets
+               tl.col = "black")
+#correl between vars
+bug_cor <- cor(select(FN_Data_wide, !SiteRep:FnRichness))
+corrplot::corrplot(bug_cor,col = colorRampPalette(viridis(50))(50),#number of breaks in brackets
+               tl.col = "black")
+#screeplot
+factoextra::fviz_eig(Bug_PCA)
+
+NMDS
+
+#merge PCAs into diversity table
+MergedData <- tibble(Full_DivScore_Data,
+                     rename(select(as_tibble(AnthroLandscape_PCA$x), PC1), Landscape_PC1 = PC1)) %>% 
+  left_join(select(FullEnviron_Data, SiteRep,  starts_with("AVG")), by = "SiteRep") %>% 
+  filter(is.na(AVG_PM2.5) != T) %>% 
+  mutate(Rep = as.factor(str_extract(SiteRep, "[:digit:]")),
+         Type = case_when(str_detect(SiteRep, "^U") == T ~ "Urban",
+                          str_detect(SiteRep, "^S") == T ~ "Suburban",
+                          str_detect(SiteRep, "^R" )== T ~ "Rural"))
+
+#linear modelling time!!!
+FnGRichness_Model<- glm(data = MergedData,FnRichness ~ Landscape_PC1 + Rep,
+            family = "poisson")
+summary(FnGRichness_Model)
+
+FnGRichness_Model2<- glm(data = MergedData,FnRichness ~ + VegRichness +AVG_PM2.5 +AVG_TEMP + AVG_HUMID+Rep,
+                         family = "poisson")
+summary(FnGRichness_Model2)
+step(FnGRichness_Model)
+step(FnGRichness_Model2)
+
+ORichness_Model<- glm(data = MergedData, 
+            Order_Richness ~ Landscape_PC1 + VegRichness +AVG_PM2.5 +AVG_TEMP + AVG_HUMID + Rep,
+            family = "poisson")
+summary(ORichness_Model)
+FnGRichness_Model<- glm(data = MergedData, 
+            FnG_Richness ~ Landscape_PC1 + VegRichness +AVG_PM2.5 +AVG_TEMP + AVG_HUMID + Rep,
+            family = "poisson")
+summary(FnGRichness_Model)
+
+Shannon_Model <- glm(data = MergedData,
+                     FnGO_Shannon ~ +VegShannon +AVG_PM2.5 +AVG_TEMP + AVG_HUMID+ Rep)
+summary(Shannon_Model)
+Even_Model<- glm(data = MergedData, 
+            FnGO_Evenness ~ Landscape_PC1 + VegEvenness +AVG_PM2.5 +AVG_TEMP + AVG_HUMID + Rep)
+summary(Even_Model)
+InvSimp_Model<- glm(data = MergedData, 
+            FnGO_InvSimp ~ Landscape_PC1 + VegInvSimp +AVG_PM2.5 +AVG_TEMP + AVG_HUMID + Rep)
+summary(InvSimp_Model)
+
+#c
+Richness_Tree<- partykit::ctree(data = MergedData, 
+            Total_Richness ~ AVG1km_ALAN + AVG1km_ISC +AVG1km_CC + VegRichness +AVG_PM2.5 +AVG_TEMP + AVG_HUMID + Rep)
+partykit::plot.party(Richness_Tree)
+
+```
+
+```{r raw bug data taxonomic EDA}
+#All orders:
+Percent_At_Taxon(BugDiversity_RAW, depth = "family")
+Percent_At_Taxon(BugDiversity_RAW, depth = "family")
+#U1B N might need some better id's
+
+#Hymenotpera:----
+#Just ants
+Percent_At_Taxon(BugDiversity_RAW, depth = "genus", filter_rank = "family", filter_name = "Formicidae")
+
+#subfamilies
+unique(BugDiversity_RAW[taxon_subfamily_name == "Formicinae", scientific_name])
+#Formicidae: Omnivore
+
+#unlisted citations use Ant Ecology
+
+#Nylanderia flavipes: Invasive
+
+#Hymenoptera WITHOUT ants
+Percent_At_Taxon(BugDiversity_RAW[ taxon_family_name != "Formicidae"], depth = "family", filter_rank = "order", filter_name = "Hymenoptera")
+Percent_At_Taxon(BugDiversity_Netting_RAW[taxon_family_name != "Formicidae"], depth = "family", filter_rank = "order", filter_name = "Hymenoptera")
+#superfamilies
+unique(BugDiversity_RAW[ taxon_order_name == "Hymenoptera" & taxon_family_name != "Formicidae", taxon_family_name])
+#Symphyta: Herbivore
+#Ichneoumonoidea,Braconidae,Eurytomidae,Pteromalidae, Eulophidae,Platygastridae,Figitidae,Diapriidae: Parasitoid
+
+#If source is not explicitly listed, used Hymenoptera Of the World
+
+#Hemiptera:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Hemiptera")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Hemiptera")
+#families
+unique(BugDiversity_RAW[taxon_order_name == "Hemiptera", taxon_family_name])
+#Reduviidae: Predatory
+#Pentatomidae, Acanthosomatidae, Pachygronthidae, Miridae (maybe),Auchenorrhyncha,Sternorrhyncha: Herbivore
+
+#Unlisted sources use True Bugs of The World (Schuh & Slater 1995)
+
+#Coleoptera:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Coleoptera")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Coleoptera")
+#families
+unique(BugDiversity_RAW[taxon_order_name == "Coleoptera", taxon_family_name])
+#Elateridae,Cantharidae,Tenebrionidae, Staphylinidae, Malachiinae: omnivore
+#Melandryidae, Scirtidae,Ptinidae: detritivore
+#Psyllobora vigintimaculata,Gyrophaena, Cryptophagidae, Latridiidae: fungivore
+#Chilocorus: predator
+#Scarabaeidae, Mordellidae, Byturidae,Apioninae, Cerambycidae,Anaspidinae,Curculionidae, Chrysomelidae,Attelabidae: Herbivore
+#Mordellidae: pollinator
+
+#Cyrtepistomus castaneus: Invasive, herbivore
+
+#source: American Beetles, Vol 1&2
+
+#Diptera:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Diptera")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Diptera")
+#families
+unique(BugDiversity_RAW[taxon_order_name == "Diptera", taxon_family_name])
+#Chlorops (Nartshuk 2013): herbivore
+#Chironomidae, Phoridae, Cecidomyiidae: NA
+#Empidoidea(Sinclair & Cumming 2006),  Asilidae (Sinclair & Cumming 2006),Chaoboridae(larvae only): predator
+#Limoniidae(Pritchard 1983), Sepsidae(PontMeierTheSepsidaeofEurope),Lauxaniidae, Scatopsidae: detritivore
+#Mycetophilidae: fungivore
+#Sciaridae: NA, could be fungi or detritivore
+#Culicidae: parasite
+#Culicidae,Chaoboridae, Sepsidae: pollinator
+#these classes need some revision, since the feeding styles differ from larvae to adults
+#Using manual of nearctic diptera vols 1,2,&3 for unlisted Ids
+
+#Lepidoptera:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Lepidoptera")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Lepidoptera")
+#order is good enough for feeding guild (herbivore/pollinator)
+
+#Spiders:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Araneae")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Araneae")
+#order is good enough for feeding guild (predators)
+
+#Mites:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Trombidiformes")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Trombidiformes")
+#taxa
+unique(BugDiversity_RAW[taxon_order_name == "Trombidiformes", scientific_name])
+#Anystoidea family is enoguh for feeding guild (predators)
+
+Percent_At_Taxon(BugDiversity_RAW, depth = "family", filter_rank = "order", filter_name = "Ixodida")
+unique(BugDiversity_RAW[taxon_order_name == "Ixodida", scientific_name])
+#order enough for classification (parasite)
+
+#Thrips:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Thysanoptera")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Thysanoptera")
+#taxa
+unique(BugDiversity_RAW[taxon_order_name == "Thysanoptera", scientific_name])
+#feeding guild unkwon even from family level :(
+
+#Ephemeroptera (mayflies):
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Ephemeroptera")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Ephemeroptera")
+#feeding guild unkown, could be herbivore or detritivore
+#indicator of nearby water body health???
+
+#Psocodea (barklice):
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Psocodea")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Psocodea")
+#taxa:
+unique(BugDiversity_RAW[taxon_order_name == "Psocodea", scientific_name])
+#leaving at order is ok for functional groups (herbivore)
+
+#Orthoptera:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "genus", filter_rank = "order", filter_name = "Orthoptera")
+#all to genus :)
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "genus", filter_rank = "order", filter_name = "Orthoptera")
+#almost all to genus
+#taxa
+unique(BugDiversity_RAW[taxon_order_name == "Orthoptera", scientific_name])
+#Phaneroptera nana: invasive
+#Hapithus saltator, Melanoplus: native
+
+#leaving at order is ok for functional groups (herbivore)
+
+#Neuroptera (lacewings):
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Neuroptera")
+#1/1 is at species level (Chrysoperla rufilabris; native)
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Neuroptera")
+#leaving at order is ok for feeding guild (larvae are predatory)
+
+#Opiliones (harvestthems):
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Opiliones")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Opiliones")
+#leaving at order is ok for feeding guild (omnivore)
+
+#Isopoda:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Isopoda")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Isopoda")
+#leaving at order is ok for feeding guild (detritivores)
+
+#Entomobryomorpha(elongate spring tails):
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Entomobryomorpha")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Entomobryomorpha")
+#leaving at order is ok for feeding guild (detritivores)
+
+#Pseudoscorpiones:
+Percent_At_Taxon(BugDiversity_BeatSheet_RAW, depth = "family", filter_rank = "order", filter_name = "Pseudoscorpiones")
+Percent_At_Taxon(BugDiversity_Netting_RAW, depth = "family", filter_rank = "order", filter_name = "Pseudoscorpiones")
+#leaving at order is ok for feeding guild (predator)
+
+```
+
+```{r similarity index heatmaps}
+#beating sheet
+heatmap(FN_jaccard_BS)
+#netting
+heatmap(FN_jaccard_N)
+```
+
+```{r bug functional group EDA}
+#plots of diversity scores at each site
+FNDL_plotting <- FN_Data_long %>% 
+  group_by(FunctionalGroup, taxon_order_name) %>% 
+  mutate(FNGO_cts = sum(FnGroupCount_Order)) %>% 
+  group_by(FunctionalGroup) %>% 
+  mutate(FNG_totals = sum(FnGroupCount_Order),
+         FNG_prop = FNGO_cts/FNG_totals) 
+  
+
+ggplot(data = FNDL_plotting, aes(x = taxon_order_name, y = FNG_prop, fill = taxon_order_name)) +
+  geom_col(width = 1, position = "dodge") +
+  theme_gaia(base_size = 12) +
+  facet_wrap(~FunctionalGroup, scales = "free", nrow = 1) +
+  scale_fill_viridis_d() +
+  labs(title = "Relative Abundance of Arthropod Orders Between Feeding Guilds",
+       x = "Order", y = "% Abundance") +
+  theme(axis.text.x = element_text(angle = 66, vjust = 0.5))
+
+
+
+
+
+#scatterplots
+#scatterplot of cover plant diversity and FN group diversity (for just netting)----
+#vector of all possible diversity score types
+DiversityTypes <- c("Richness", "Shannon", "Simpson","InvSimp", "Evenness")
+FullData <- data.table::as.data.table(MergedData)
+#iterate over diversity score vector to produce a plot
+GroundCoverDiversityPlots <- list()
+for(d in 1:length(DiversityTypes)){
+  #create diversity symbols
+  BugDiv <- sym(paste("Fn", DiversityTypes[[d]], sep = ""))
+  PlantDiv <- sym(paste("Plant",DiversityTypes[[d]], sep = ""))
+  GroundCoverDiversityPlots[[d]] <- ggplot(FullData, aes(x = !!BugDiv, y = !!PlantDiv)) +
+                                    geom_smooth(color = "black",method = "lm", se = F, linewidth = 0.75, linetype = 3) +
+                                    geom_point(aes(fill = SiteRep), shape = 21, size = 2.5) +
+                                    theme_gaia(base_size = 15) +
+                                    scale_fill_viridis_d() +
+                                    labs(title = "Functional group Diversity (Netting)\n vs \ncover Plant Diversity")
+}
+GroundCoverDiversityPlots[[1]]
+GroundCoverDiversityPlots[[2]]
+GroundCoverDiversityPlots[[3]]
+GroundCoverDiversityPlots[[4]]
+GroundCoverDiversityPlots[[5]]
+
+
+#scatterplot of Tree diversity and FN group diversity----
+#iterate over diversity score vector to produce a plot
+TreeDiversityPlots <- list()
+for(d in 1:length(DiversityTypes)){
+  #create diversity symbols
+  BugDiv <- sym(paste("Fn", DiversityTypes[[d]], sep = ""))
+  TreeDiv <- sym(paste("Tree",DiversityTypes[[d]], sep = ""))
+  TreeDiversityPlots[[d]] <- ggplot(FullData[Method == "Beating Sheet"], aes(x = !!BugDiv, y = !!TreeDiv)) +
+                                    geom_smooth(color = "black",method = "lm", se = F, linewidth = 0.5, linetype = 3) +
+                                    geom_point(aes(fill = SiteRep), shape = 21, size = 2) +
+                                    theme_gaia() +
+                                    scale_fill_viridis_d() +
+                                    labs(title = "Functional group Diversity (Beating Sheet)\n vs \nTree Diversity")
+}
+TreeDiversityPlots[[1]]
+TreeDiversityPlots[[2]]
+TreeDiversityPlots[[3]]
+TreeDiversityPlots[[4]]
+TreeDiversityPlots[[5]]
+
+
+#Average PM2.5 conc vs FN group diversity----
+ggplot(FullData, aes(x = FnRichness, y = AVG_PM2.5)) +
+  geom_point(aes(fill = SiteRep), shape = 21, size = 2) +
+  theme_gaia() +
+  geom_smooth(color = "black",method = "lm", se = F, linewidth = 0.5, linetype = 3) +
+  scale_fill_viridis_d()
+#shannon
+ggplot(FullData, aes(x = FnShannon, y = AVG_PM2.5, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  geom_smooth(color = "black",method = "lm", se = F, linewidth = 0.5, linetype = 1) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#simpson
+ggplot(FullData, aes(x = FnSimpson, y = AVG_PM2.5, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#inv-simpson
+ggplot(FullData, aes(x = FnInvSimp, y = AVG_PM2.5, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#Shannon Evenness
+ggplot(FullData, aes(x = FnEvenness, y = AVG_PM2.5, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+
+#Average PM10 conc vs FN group diversity----
+ggplot(FullData, aes(x = FnRichness, y = AVG_PM10, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  geom_smooth
+  scale_fill_viridis_d()
+#shannon
+ggplot(FullData, aes(x = FnRichness, y = AVG_PM10)) +
+  geom_point(aes(fill = SiteRep), shape = 21, size = 2) +
+  theme_gaia() +
+  geom_smooth(color = "black",method = "lm", se = F, linewidth = 0.5, linetype = 3) +
+  scale_fill_viridis_d()
+#simpson
+ggplot(FullData, aes(x = FnSimpson, y = AVG_PM10, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#inv-simpson
+ggplot(FullData, aes(x = FnInvSimp, y = AVG_PM10, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#Shannon Evenness
+ggplot(FullData, aes(x = FnEvenness, y = AVG_PM10, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#Average CO2 conc vs FN group diversity----
+ggplot(FullData, aes(x = FnRichness, y = AVG_CO2, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#shannon
+ggplot(FullData, aes(x = FnShannon, y = AVG_CO2, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#simpson
+ggplot(FullData, aes(x = FnSimpson, y = AVG_CO2, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#inv-simpson
+ggplot(FullData, aes(x = FnInvSimp, y = AVG_CO2, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#Shannon Evenness
+ggplot(FullData, aes(x = FnEvenness, y = AVG_CO2, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+
+#Average TEMP conc vs FN group diversity----
+ggplot(FullData, aes(x = FnRichness, y = AVG_TEMP, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#shannon
+ggplot(FullData, aes(x = FnShannon, y = AVG_TEMP, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#simpson
+ggplot(FullData, aes(x = FnSimpson, y = AVG_TEMP, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#inv-simpson
+ggplot(FullData, aes(x = FnInvSimp, y = AVG_TEMP, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#Shannon Evenness
+ggplot(FullData, aes(x = FnEvenness, y = AVG_TEMP, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+
+#Average HUMID conc vs FN group diversity----
+ggplot(FullData, aes(x = FnRichness, y = AVG_HUMID, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#shannon
+ggplot(FullData, aes(x = FnShannon, y = AVG_HUMID, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#simpson
+ggplot(FullData, aes(x = FnSimpson, y = AVG_HUMID, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#inv-simpson
+ggplot(FullData, aes(x = FnInvSimp, y = AVG_HUMID, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+#Shannon Evenness
+ggplot(FullData, aes(x = FnEvenness, y = AVG_HUMID, fill = SiteRep)) +
+  geom_point(shape = 21, size = 2) +
+  theme_gaia() +
+  scale_fill_viridis_d()
+
+#Plotting Landscape of PCA with diversity indices
+PCA_vsDiv <- list()
+for(d in 1:length(DiversityTypes)){
+  #create diversity symbols
+  BugDiv <- sym(paste("Fn", DiversityTypes[[d]], sep = ""))
+  TreeDiv <- sym(paste("Tree",DiversityTypes[[d]], sep = ""))
+  PCA_vsDiv[[d]] <- ggplot(FullData, aes(x = !!BugDiv, y = Landscape_PC1)) +
+                                    geom_smooth(color = "black",method = "lm", se = F, linewidth = 0.5, linetype = 3) +
+                                    geom_point(aes(fill = SiteRep), shape = 21, size = 2) +
+                                    theme_gaia() +
+                                    scale_fill_viridis_d() +
+                                    labs(title = "Functional group Diversity (Beating Sheet)\n vs \nTree Diversity")
+}
+PCA_vsDiv[[1]]
+PCA_vsDiv[[2]]
+PCA_vsDiv[[3]]
+PCA_vsDiv[[4]]
+PCA_vsDiv[[5]]
+```
+
+```{r}
+summary_shite <- data.table::as.data.table(FullData) %>% 
+  group_by(SiteRep, Method, FunctionalGroup) %>% 
+  reframe(FnOrderRichness = unique(FnOrderRichness))
+
+ggplot(summary_shite, aes(x = SiteRep, y = FnOrderRichness, fill = FunctionalGroup)) +
+  geom_col() +
+  facet_wrap(~Method)
+
+ggplot(summary_shite) +
+  geom_col(aes(x = SiteRep, y =total_order_richness))
+
+ggplot(FullData) +
+  geom_col(aes(x = SiteRep, y = FnGroupCount_Order, fill = paste(FunctionalGroup, taxon_order_name)))
+
+ggplot(FullData, aes(y = FnGroupCount_Order, x = SiteRep, fill = FnOrderRichness)) +
+  geom_col()
+```
+
+
+```{r AQ plotting}
+ggplot(AQ_MergedData, aes(x = DATE, y =PM2.5, fill = SITEREP)) +
+  geom_point(shape = 21) +
+  geom_hline(aes(yintercept = AVG_PM2.5, color = SITEREP)) +
+  facet_wrap(~SITEREP, scales = "free_x")
+
+ggplot(FullEnviron_Data, aes(x = AVG1km_ALAN)) +
+  geom_bar()
+ 
+```
+
+```{r plant diversity plotting}
+#Richness----
+  #ground cover plant diversity indices by site
+  ggplot(Plant_Data, aes(y = Richness, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+
+ #canopy cover plant diversity indices by site
+  ggplot(Tree_Data, aes(y = Richness, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+  
+  #Richness by Date
+  ggplot(Plant_Data, ae(x =Date, y = Richness))
+#Shannon----
+#ground cover plant diversity indices by site
+  ggplot(Plant_Data, aes(y = Shannon, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+
+ #canopy cover plant diversity indices by site
+  ggplot(Tree_Data, aes(y = Shannon, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+  
+#Simpson----
+  #ground cover plant diversity indices by site
+  ggplot(Plant_Data, aes(y = Simpson, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+
+ #canopy cover plant diversity indices by site
+  ggplot(Tree_Data, aes(y = Simpson, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+  
+#InverseSimpson----
+  #ground cover plant diversity indices by site
+  ggplot(Plant_Data, aes(y = InvSimp, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+
+ #canopy cover plant diversity indices by site
+  ggplot(Tree_Data, aes(y = InvSimp, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+  
+#ShannonEvenness----
+  #ground cover plant diversity indices by site
+  ggplot(Plant_Data, aes(y = Evenness, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+
+ #canopy cover plant diversity indices by site
+  ggplot(Tree_Data, aes(y = Evenness, x = Site, fill = Site)) +
+  geom_point(shape = 21, size = 2) +
+  scale_fill_viridis_d(option = "A")
+```
+

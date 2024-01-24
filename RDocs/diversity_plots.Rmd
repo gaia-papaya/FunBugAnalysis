@@ -1,0 +1,56 @@
+```{r}
+family_levelS <- family_level %>% 
+  group_by(Type,taxon_family_name, FunctionalGroup) %>% 
+  filter(FunctionalGroup != "") %>% 
+  summarise(tfcount = n()) %>% 
+  group_by(Type, taxon_)
+
+ggplot(filter(family_level, FunctionalGroup == "Herbivore"), aes(x = reorder(taxon_family_name, id), fill = taxon_order_name)) +
+  geom_bar() +
+  theme_gaia(base_size = 20) +
+  scale_fill_viridis_d() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  facet_wrap(~Type, ncol = 1) +
+  labs(title = "Arthropod Herbivore Families",x = "Family", fill = "Order")
+
+ggplot(filter(genus_level, taxon_family_name == "Formicidae" & taxon_genus_name != "Nylanderia"), aes(x = reorder(taxon_genus_name, id), fill = taxon_subfamily_name)) +
+  geom_bar() +
+  theme_gaia(base_size = 20) +
+  scale_fill_viridis_d() +
+  theme(axis.text.x = element_text(angle = 75, vjust = 0.5)) +
+  facet_wrap(~Type, scales = "free_y", ncol = 1) +
+  labs(title = "Ant Genera \n (excluding Nylanderia)",x = "Genus", fill = "Subfamilies")
+
+ggplot(filter(family_level, FunctionalGroup == "Omnivore" & taxon_family_name != "Formicidae"), aes(x = reorder(taxon_family_name, id), fill = taxon_order_name)) +
+  geom_bar() +
+  theme_gaia(base_size = 20) +
+  scale_fill_viridis_d() +
+  theme(axis.text.x = element_text(angle = 75, vjust = 0.5)) +
+  facet_wrap(~Type, scales = "free_y", ncol = 1) +
+  labs(title = "Arthropod\n Omnivore Families\n(Excluding Ants)",x = "Family", fill = "Order")
+
+ggplot(filter(family_level, FunctionalGroup == "Predator"), aes(x = reorder(taxon_family_name, id), fill = taxon_order_name)) +
+  geom_bar() +
+  theme_gaia(base_size = 20) +
+  scale_fill_viridis_d() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  facet_wrap(~Type, ncol = 1)  +
+  labs(title = "Arthropod Predator Families",x = "Family", fill = "Order")
+
+ggplot(filter(family_level, FunctionalGroup == "Detritivore"), aes(x = reorder(taxon_family_name, id), fill = taxon_order_name)) +
+  geom_bar() +
+  theme_gaia(base_size = 20) +
+  scale_fill_viridis_d(end = 0.9, begin = 0.1) +
+  theme(axis.text.x = element_text(angle = 75, vjust = 0.5)) +
+  facet_wrap(~Type, ncol = 1) +
+  labs(title = "Arthropod Detritivore Families",x = "Family", fill = "Order")
+
+ggplot(filter(family_level, FunctionalGroup == "Parasitoid"), aes(x = reorder(taxon_family_name, id), fill = taxon_order_name)) +
+  geom_bar() +
+  theme_gaia(base_size = 20) +
+  scale_fill_viridis_d() +
+  theme(axis.text.x = element_text(angle = 75, vjust = 0.5)) +
+  facet_wrap(~Type, ncol = 1) +
+  labs(title = "Arthropod Parasitoid Families",x = "Family", fill = "Order")
+```
+
